@@ -1,7 +1,9 @@
 import csv
+import time
 
 import requests
 from bs4 import BeautifulSoup
+from selenium import webdriver
 
 def get_webpage_html(url:str)-> str:
     """
@@ -95,12 +97,18 @@ def get_info_from_offer(soup, offer_link)-> list:
     n_employees = get_info_via_icon(soup, 'department')
     company_name = soup.find('h3', {'data-testid':'job-header-organization-title'}).text
     company_link = "https://www.welcometothejungle.com" + soup.find('a', {"data-testid":"job-header-organization-link-logo"}).get('href')
-    offer_text = soup.find("section", {"id":"about-section"}).text.replace('\n', ' ')
+    company_description = soup.find("section", {"id":"about-section"}).text.replace('\n', ' ')
+    offer_text = soup.find("section", {"id":"description-section"}).text.replace('\n', ' ')
+    # Add profile section if there is one
+    if soup.find("section", {"id":"profile-section"}):
+        profile_text = offer_text + ' ' + soup.find("section", {"id":"profile-section"}).text.replace('\n', ' ')
+    else :
+        profile_text = ''
 
     # Organizing data into a list
-    job_data = [job_title, contract_type, job_location, salary, start_date, remote_work, education_level, experience_needed,  company_name, sector, n_employees, company_link, offer_link, offer_text]
+    job_data = [job_title, contract_type, job_location, salary, start_date, remote_work, education_level, experience_needed,  company_name, sector, n_employees, company_link, offer_link, company_description, offer_text, profile_text]
     # Organizing columns names in a list 
-    column_names = ["Titre", 'Contrat', 'Localisation', 'Salaire', 'Date de début' 'Télétravail', 'Etudes', 'Expérience', 'Entreprise', 'Domaine', 'Employés', 'Lien_entreprise', 'Lien_offre', 'Offre' ]
+    column_names = ["Titre", 'Contrat', 'Localisation', 'Salaire', 'Date de début', 'Télétravail', 'Etudes', 'Expérience', 'Entreprise', 'Domaine', 'Employés', 'Lien_entreprise', 'Lien_offre', "Description_entreprise", 'Offre', "Profil" ]
 
     return job_data, column_names
 
@@ -133,7 +141,7 @@ def add_line_to_csv(new_line:list, columns:list, csv_path:str):
         writer = csv.writer(csv_file)
         # Add a line with columns 
         if csv_file.tell() == 0:
-            writer.writerow(column_names)
+            writer.writerow(columns)
         # Add data for the offer
         writer.writerow(new_line)
 
@@ -160,10 +168,88 @@ def scrape_data_from_job_offer(offer_link:str, job_offers_csv_path:str):
     # Save results to csv
     add_line_to_csv(job_data, column_names, job_offers_csv_path)
 
+def get_dynamic_page_content(target_url: str) -> str:
+    """
+    Obtient le contenu de la page dynamique en utilisant Selenium et Chrome.
 
-job_offer_list =["https://www.welcometothejungle.com/fr/companies/nickel/jobs/developpeur-web-python-f-h-python-sur-google-cloud_charenton-le-pont?q=740dab72640f27ab2c29b35b4b850858&o=1792771",
-"https://www.welcometothejungle.com/fr/companies/ratp-smart-systems/jobs/developpeur-map-f-h_paris?q=740dab72640f27ab2c29b35b4b850858&o=1643270",
-"https://www.welcometothejungle.com/fr/companies/helloasso/jobs/lead-developpeur-euse-python_begles?q=740dab72640f27ab2c29b35b4b850858&o=1470841"]
+    Args:
+        target_url (str): L'URL de la page cible.
 
-for offer_link in job_offer_list:
-    scrape_data_from_job_offer(offer_link, 'job_offers.csv')
+    Returns:
+    str: Le contenu de la page en tant que chaîne de caractères.
+    """
+    # Intialize a Chrome object
+    driver = webdriver.Chrome(executable_path=r'C:\Users\Tanguy\Desktop\30_Python\Projets_Python\drivers\chromedriver.exe')
+
+    # Accessing the target url
+    driver.get("https://www.welcometothejungle.com/fr/jobs?query=d%C3%A9veloppeur%20python")
+
+    # Wait for 5 seconds
+    time.sleep(5)
+
+    # Store the content of the webpage
+    page_content = driver.page_source
+
+    # Close the web browser and terminates the WebDriver session
+    driver.quit()
+
+    return page_content
+
+def get_job_links_list(soup:BeautifulSoup) :
+    """
+    Extracts the links of the job offers from the HTML content of the Welcome to the Jungle website.
+    This function finds the ordered list of job offers on a Welcome to the Jungle search results page and extracts the
+    URLs of the job offers from the links in the lines of the list items. The URLs are returned as a list of strings
+
+    Args:
+    - soup: A BeautifulSoup object representing the HTML content of a Welcome to the Jungle search results page.
+
+    Returns:
+    - A list of strings representing the URLs of the job offers..
+    """
+    # find the ordered list
+    job_list = soup.find('ol', {"id":"job-search-results"})
+
+    # Create an empty list for links
+    job_links = []
+
+    # Iterate over the jobs list
+    for job in job_list.find_all('li'):
+        job_links.append(f"https://www.welcometothejungle.com{job.find('a').get('href')}")
+
+    return job_links   
+
+def scrape_job_offer_data_from_keywords(keywords:str, csv_path:str):
+    """
+    Extracts data from all the job offers on the job offer first search page with keywords specified.
+    Nothing is returned but the data collected is saved to the csv path.
+
+    Args:
+    - keywords A string representing the keywords we want to use to get the job offer search results page.
+    - csv_path : A string representing the path we want to save the file to.
+
+    Returns:
+    - None
+    """
+
+    # Get search page dynamic content with selenium
+    search_page_content = get_dynamic_page_content(f"https://www.welcometothejungle.com/fr/jobs?query={keywords}&page=1")
+
+    # Initialize a BS object
+    soup = BeautifulSoup(search_page_content, "lxml")
+
+    # Get job links from the search page BS object
+    job_links = get_job_links_list(soup)
+
+    # Loop over the links to fill the csv
+    for i, job_offer in enumerate(job_links):
+        print(i, job_offer)
+        scrape_data_from_job_offer(job_offer, csv_path)
+        time.sleep(1)
+
+# Parameters
+keywords = "Développeur Python"
+csv_path = "job_offers.csv"
+
+# Fill up csv
+scrape_job_offer_data_from_keywords(keywords, csv_path)
