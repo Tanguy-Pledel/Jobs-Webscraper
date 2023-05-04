@@ -1,5 +1,8 @@
 import csv
 import time
+import os
+from email.message import EmailMessage
+import smtplib
 
 import requests
 from bs4 import BeautifulSoup
@@ -247,9 +250,88 @@ def scrape_job_offer_data_from_keywords(keywords:str, csv_path:str):
         scrape_data_from_job_offer(job_offer, csv_path)
         time.sleep(1)
 
+def send_email_with_csv(dest_email: str, csv_path: str, keywords: str) -> None:
+    """Sends an email message with a CSV file attachment 
+    containing new job offers.
+
+    Args:
+        dest_email (str): The email address to send the message to.
+        csv_path (str): The file path to the CSV file containing job offer data.
+        keywords (str): The search keywords for the new job offers.
+
+    Returns:
+        None
+    """
+
+    msg = create_email_message(dest_email, keywords)
+    msg = attach_csv_file_to_message(msg, csv_path)
+    send_email(msg)
+
+def create_email_message(dest_email: str, keywords: str) -> EmailMessage:
+    """Creates an email message object.
+
+    Args:
+        dest_email (str): The email address to send the message to.
+        keywords (str): The search keywords for the new job offers.
+
+    Returns:
+        An EmailMessage object with the specified sender, recipient, subject, and body.
+    """
+
+    # Create an instance of EmailMessage
+    msg = EmailMessage()
+
+    # Set the headers of the email (sender, recipient, subject)
+    msg['From'] = os.environ['EMAIL_USER']
+    msg['To'] = dest_email
+    msg['Subject'] = "New job offers available!"
+    # Set the body of the email
+    msg.set_content(f"New job offers have appeared for the search '{keywords}'.")
+    
+    return msg
+
+def attach_csv_file_to_message(msg: EmailMessage, csv_path: str) -> EmailMessage:
+    """Reads the contents of a CSV file in binary mode
+    and attaches it to an email message.
+
+    Args:
+        msg (EmailMessage): The email message object to attach the CSV file to.
+        job_offer_data (bytes): The contents of the CSV file.
+
+    Returns:
+        None
+    """
+    
+    # Open the CSV file in binary mode and read its contents
+    with open(csv_path, 'rb') as f:
+        job_offer_data = f.read()
+
+    # Attach the CSV file to the email message
+    msg.add_attachment(job_offer_data, maintype='text', subtype='csv', filename="job_offers.csv")
+
+    return msg
+
+def send_email(msg: EmailMessage) -> None:
+    """Sends an email message using SMTP.
+
+    Args:
+        msg (EmailMessage): The email message object to send.
+
+    Returns:
+        None
+    """
+    
+    # Send the email using SMTP
+    with smtplib.SMTP('smtp.gmail.com', 587) as smtp:
+        smtp.starttls()
+        smtp.login(os.environ["EMAIL_USER"], os.environ["EMAIL_PASSWORD"])
+        smtp.send_message(msg)
+    
+    print("Email was sent successfully !")
+
 # Parameters
 keywords = "Développeur Python"
 csv_path = "job_offers.csv"
 
-# Fill up csv
 scrape_job_offer_data_from_keywords(keywords, csv_path)
+send_email_with_csv(os.environ['EMAIL_USER'], csv_path, keywords)
