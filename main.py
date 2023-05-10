@@ -3,10 +3,12 @@ import time
 import os
 from email.message import EmailMessage
 import smtplib
+from datetime import date
 
 import requests
 from bs4 import BeautifulSoup
 from selenium import webdriver
+import pandas as pd
 
 def get_webpage_html(url:str)-> str:
     """
@@ -68,6 +70,7 @@ def get_info_from_offer(soup, offer_link)-> list:
         - A list of job information extracted from the
           offer page. The list contains the following 
           elements in order:
+            - Time of the scraping
             - Job title
             - Contract type
             - Job location
@@ -109,9 +112,9 @@ def get_info_from_offer(soup, offer_link)-> list:
         profile_text = ''
 
     # Organizing data into a list
-    job_data = [job_title, contract_type, job_location, salary, start_date, remote_work, education_level, experience_needed,  company_name, sector, n_employees, company_link, offer_link, company_description, offer_text, profile_text]
+    job_data = [date.today(), job_title, contract_type, job_location, salary, start_date, remote_work, education_level, experience_needed,  company_name, sector, n_employees, company_link, offer_link, company_description, offer_text, profile_text]
     # Organizing columns names in a list 
-    column_names = ["Titre", 'Contrat', 'Localisation', 'Salaire', 'Date de début', 'Télétravail', 'Etudes', 'Expérience', 'Entreprise', 'Domaine', 'Employés', 'Lien_entreprise', 'Lien_offre', "Description_entreprise", 'Offre', "Profil" ]
+    column_names = ["Date de la collecte","Titre", 'Contrat', 'Localisation', 'Salaire', 'Date de début', 'Télétravail', 'Etudes', 'Expérience', 'Entreprise', 'Domaine', 'Employés', 'Lien_entreprise', 'Lien_offre', "Description_entreprise", 'Offre', "Profil" ]
 
     return job_data, column_names
 
@@ -250,6 +253,8 @@ def scrape_job_offer_data_from_keywords(keywords:str, csv_path:str):
         scrape_data_from_job_offer(job_offer, csv_path)
         time.sleep(1)
 
+    # Get rid of job duplicates
+
 def send_email_with_csv(dest_email: str, csv_path: str, keywords: str) -> None:
     """Sends an email message with a CSV file attachment 
     containing new job offers.
@@ -262,12 +267,14 @@ def send_email_with_csv(dest_email: str, csv_path: str, keywords: str) -> None:
     Returns:
         None
     """
+    new_entries = get_rid_of_duplicates(csv_path)
 
-    msg = create_email_message(dest_email, keywords)
-    msg = attach_csv_file_to_message(msg, csv_path)
-    send_email(msg)
+    if new_entries > 0 : 
+        msg = create_email_message(dest_email, keywords, new_entries)
+        msg = attach_csv_file_to_message(msg, csv_path)
+        send_email(msg)
 
-def create_email_message(dest_email: str, keywords: str) -> EmailMessage:
+def create_email_message(dest_email: str, keywords: str, new_entries:int) -> EmailMessage:
     """Creates an email message object.
 
     Args:
@@ -284,9 +291,9 @@ def create_email_message(dest_email: str, keywords: str) -> EmailMessage:
     # Set the headers of the email (sender, recipient, subject)
     msg['From'] = os.environ['EMAIL_USER']
     msg['To'] = dest_email
-    msg['Subject'] = "New job offers available!"
+    msg['Subject'] = f"{keywords} - New job offers available! ({new_entries})"
     # Set the body of the email
-    msg.set_content(f"New job offers have appeared for the search '{keywords}'.")
+    msg.set_content(f"{new_entries} new job offers have appeared for the search '{keywords}'.")
     
     return msg
 
@@ -329,9 +336,29 @@ def send_email(msg: EmailMessage) -> None:
     
     print("Email was sent successfully !")
 
+def get_rid_of_duplicates(csv_path:str)-> int: 
+    """
+    This function eliminates duplicatas from the dataset and return the number of real new entries for the current date.
+
+    Args:
+        csv_path : The path to the csv file containing job data.
+
+    Returns:
+        new_entries : The number of new job offers for the current day.
+    """
+    df = pd.read_csv(csv_path)
+    df = df.drop_duplicates(subset = ["Titre","Contrat","Localisation","Salaire","Date de début","Télétravail","Etudes","Expérience","Entreprise","Domaine","Employés","Offre", "Profil"], keep='first')
+    new_entries = df[df["Date de la collecte"] == str(date.today())].shape[0]
+    df.to_csv(csv_path, index=False)
+
+    return new_entries
+
 # Parameters
 keywords = "Développeur Python"
 csv_path = "job_offers.csv"
 
-scrape_job_offer_data_from_keywords(keywords, csv_path)
+# scrape_job_offer_data_from_keywords(keywords, csv_path)
 send_email_with_csv(os.environ['EMAIL_USER'], csv_path, keywords)
+
+
+
