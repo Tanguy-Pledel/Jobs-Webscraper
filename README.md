@@ -16,7 +16,7 @@ This project has been created along with the french titkok video series "30 jour
 
 1. Open the terminal and navigate to the project directory.
 2. Run the script with the following command:
-python main.py "keywords" (replace "keywords" with your desired search keywords)
+`python main.py "keywords"` (replace "keywords" with your desired search keywords)
 3. The script will scrape job offers based on the specified keywords, save the data to a CSV file, and send an email with the CSV file attached.
 
 ## Configuration
